@@ -4,19 +4,34 @@ from trl.data_utils import maybe_apply_chat_template
 import torch
 
 from open_r1.vlm_modules.vlm_module import VLMBaseModule
+from open_r1.utils.logger_utils import get_logger
+import os
+import re
+log_path = os.getenv("LOG_PATH")
 
+logger = get_logger(name="qwen module log", log_file=log_path.replace(".txt", ".log"))
+POTENTIAL_LIST = ["cad", "chf", "mi"]
 def process_predict_label(content):
-    try:
-        parsed = ast.literal_eval(content)
-        if isinstance(parsed, list):
-            return [item.strip().lower() for item in parsed]
-    except:
-        pass
+    # try:
+    #     parsed = ast.literal_eval(content)
+    #     if isinstance(parsed, list):
+    #         return [item.strip().lower() for item in parsed]
+    # except:
+    #     pass
 
-    if "|" in content:
-        return [item.strip().lower() for item in content.split("|")]
+    # if "|" in content:
+    #     return [item.strip().lower() for item in content.split("|")]
 
-    return [content.strip().lower()]
+    # return [content.strip().lower()]
+    result = []
+    ct = content.lower()
+    for d in POTENTIAL_LIST:
+        if d in ct:
+            result.append(d)
+
+    return result
+
+    
 
 
 def process_true_labels(raw):
@@ -93,6 +108,8 @@ class Qwen2VLModule(VLMBaseModule):
                 return "{Question} First output the thinking process in <think> </think> tags and then output the final answer in <answer> </answer> tags. Output the final answer in JSON format."
             case "ic":
                 return "{Question} First thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> json format answer here </answer>"
+            case "cvd":
+                return """{Question} First thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> json format answer here </answer>. The answer is in ["CAD", "CHF", "MI"], use "|" to separate multiple answers."""
             case "odLength":
                 SYSTEM_PROMPT = (
                     #"A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant "
@@ -187,7 +204,7 @@ class Qwen2VLModule(VLMBaseModule):
         pattern = r"<think>\s*(.*?)\s*</think>\s*<answer>\s*(.*?)\s*</answer>"
         completion_contents = [completion[0]["content"] for completion in completions]
         matches = [re.search(pattern, content, re.DOTALL) is not None for content in completion_contents]
-        # logger.info(f"format reward: contents: {completion_contents} \n  matches: {matches}")
+        # logger.info(f"format reward: contents: {completion_contents}")
         return [1.0 if match else 0.0 for match in matches]
     
     @staticmethod
@@ -201,18 +218,24 @@ class Qwen2VLModule(VLMBaseModule):
         for content, true_labels in zip(completion_contents, true_labels_batch):
             # Extract the predicted label string from <answer>...</answer>
             match = re.search(r"<answer>\s*(.*?)\s*</answer>", content, re.DOTALL)
-            pr = ''
             pred_labels = []
+            logger.info(f"original predict result: {content}")
             if match:
                 pred_labels = process_predict_label(match.group(1).strip())
             
+            true_labels = true_labels.replace("<answer>", "").replace("</answer>", "").strip()
             true_labels = [label.strip().lower() for label in true_labels.split("|")]
        
             # Compare the predicted and true label sets
             is_match = set(pred_labels) == set(true_labels)
             
             rwd = 1.0 if is_match else 0.0
-            # logger.info(f"exact_match_reward true_label: {true_labels} \n  pred_labels_batch: {pred_labels} \n reward: {rwd} \n predict_raw:{pr}")
+            if len(pred_labels) == 0:
+                logger.info(f"no predict label: {content}")
+            else:
+                logger.info(f"exact_match_reward true_label: {true_labels} \n  pred_labels: {pred_labels} \n reward: {rwd}")
+
+            logger.info(f"*content*: {content} \n  *true_label*: {true_labels} \n *pred_labels*: {pred_labels}")
             # if len(pred_labels) == 0:
             #     logger.info(f"bad format: {content} \n")
             rewards.append(rwd)
@@ -237,6 +260,7 @@ class Qwen2VLModule(VLMBaseModule):
             if match:
                 pred_labels = process_predict_label(match.group(1).strip())
 
+            true_labels = true_labels.replace("<answer>", "").replace("</answer>", "").strip()
             true_labels = [label.strip().lower() for label in true_labels.split("|")]
             
 
@@ -253,7 +277,7 @@ class Qwen2VLModule(VLMBaseModule):
                 rwd = 1.0
             else:
                 rwd = f1_score(y_true, y_pred)
-            logger.info(f"f1_match_reward true_label: {true_labels} \n  pred_labels_batch: {pred_labels} \n reward: {rwd}")
+            logger.info(f"f1_match_reward true_label: {true_labels} \n  pred_labels: {pred_labels} \n reward: {rwd}")
             if len(pred_labels) == 0:
                 logger.info(f"bad format: {content} \n")
             rewards.append(rwd)

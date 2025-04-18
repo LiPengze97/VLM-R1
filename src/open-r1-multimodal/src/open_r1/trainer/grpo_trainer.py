@@ -292,10 +292,6 @@ class VLMGRPOTrainer(Trainer):
         # Enable gradient checkpointing if requested
         if args.gradient_checkpointing:
             model = self._enable_gradient_checkpointing(model, args)
-<<<<<<< HEAD
-        # print('use_cache_model', model.language_model.config.use_cache)
-=======
->>>>>>> upstream/main
 
         # Reference model
         self.beta = args.beta
