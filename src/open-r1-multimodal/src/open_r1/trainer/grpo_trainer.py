@@ -288,11 +288,14 @@ class VLMGRPOTrainer(Trainer):
         #     if p.requires_grad:
         #         print(n, p.shape)
         print(f"Total trainable parameters: {total_params}")
-        print('args.gradient_checkpointing', args.gradient_checkpointing)
+
         # Enable gradient checkpointing if requested
         if args.gradient_checkpointing:
             model = self._enable_gradient_checkpointing(model, args)
+<<<<<<< HEAD
         # print('use_cache_model', model.language_model.config.use_cache)
+=======
+>>>>>>> upstream/main
 
         # Reference model
         self.beta = args.beta
@@ -300,7 +303,7 @@ class VLMGRPOTrainer(Trainer):
             # If beta is 0.0, the reference model is not needed
             self.ref_model = None
         elif is_deepspeed_zero3_enabled():
-            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
+            self.ref_model = model_cls.from_pretrained(model_id, **model_init_kwargs)
         elif is_peft_model(model):
             # If PEFT is used, the reference model is not needed since the adapter can be disabled
             # to revert to the initial model.
@@ -308,7 +311,6 @@ class VLMGRPOTrainer(Trainer):
         else:
             # If PEFT configuration is not provided, create a reference model based on the initial model.
             self.ref_model = create_reference_model(model)
-        print('use_cache_ref_model', self.ref_model.language_model.config.use_cache)
 
         # Processing class
         if processing_class is None:
