@@ -2,15 +2,15 @@ PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 export REPO_HOME="${PROJECT_ROOT}"
 echo "REPO_HOME: $REPO_HOME"
 # Change the data_paths and image_folders to your own data
-data_paths="/training/shz/dataset/vlm-r1/rec_jsonsl_train/refcoco_train.jsonl:/training/shz/dataset/vlm-r1/rec_jsonsl_train/refcocop_train.jsonl:/training/shz/dataset/vlm-r1/rec_jsonsl_train/refcocog_train.jsonl" 
-image_folders="/training/shz/dataset/coco:/training/shz/dataset/coco:/training/shz/dataset/coco"
-model_path="/training/models/Qwen2.5-VL-3B-Instruct"
+data_paths="/home/m327768/projects/MAI_RL/src/train_data/no_notes/train.jsonl" 
+image_folders="/dgx1data/aii/tao/m327768/ecg_files/ecgs"
+model_path="/home/m327768/model/Qwen/Qwen2.5-VL-3B-Instruct"
 is_reward_customized_from_vlm_module=True
 echo "data_paths: $data_paths"
 echo "image_folders: $image_folders"
 
-export EXP_NAME="Qwen2.5-VL-3B-Instruct-rec" # TODO: change this to your own experiment name
-TASK_TYPE="rec"
+export EXP_NAME="Qwen2.5-VL-3B-Instruct-cvd" # TODO: change this to your own experiment name
+TASK_TYPE="cvd"
 cd ${REPO_HOME}/src/open-r1-multimodal
 
 export DEBUG_MODE="true" # Enable Debug if you want to see the rollout of model during RL
@@ -22,7 +22,7 @@ export LOG_PATH="${REPO_HOME}/runs/${EXP_NAME}/log/debug_log.$(date +%Y-%m-%d-%H
 
 # export WANDB_DISABLED=true
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6
-torchrun --nproc_per_node="8" \
+torchrun --nproc_per_node="4" \
     --nnodes="1" \
     --node_rank="0" \
     --master_addr="127.0.0.1" \
@@ -48,7 +48,7 @@ torchrun --nproc_per_node="8" \
     --save_steps 100 \
     --num_generations 8 \
     --max_completion_length 2048 \
-    --reward_funcs accuracy format \
+    --reward_funcs accuracy format f1 \
     --beta 0.04 \
     --report_to wandb \
     --dataset-name this_is_not_used \

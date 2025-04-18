@@ -779,6 +779,7 @@ def all_match_reward(content, sol, **kwargs):
     return 1.0 if content == sol else 0.0
 
 def default_accuracy_reward(content, sol, **kwargs):
+    raise RuntimeError("No valid accuracy reward method provided. Called default_accuracy_reward.")
     reward = 0.0
         # Extract answer from solution if it has think/answer tags
     sol_match = re.search(r'<answer>(.*?)</answer>', sol)
@@ -927,7 +928,7 @@ def get_vlm_module(model_name_or_path):
 def main(script_args, training_args, model_args):
     # Load the VLM module
     vlm_module_cls = get_vlm_module(model_args.model_name_or_path)
-    print("using vlm module:", vlm_module_cls.__name__)
+    print("using vlm module:", vlm_module_cls.__name__, model_args.model_name_or_path)
     question_prompt = vlm_module_cls.get_question_template(task_type=script_args.task_type)
 
     # Get reward functions 

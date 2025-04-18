@@ -5,6 +5,29 @@ import torch
 
 from open_r1.vlm_modules.vlm_module import VLMBaseModule
 
+def process_predict_label(content):
+    try:
+        parsed = ast.literal_eval(content)
+        if isinstance(parsed, list):
+            return [item.strip().lower() for item in parsed]
+    except:
+        pass
+
+    if "|" in content:
+        return [item.strip().lower() for item in content.split("|")]
+
+    return [content.strip().lower()]
+
+
+def process_true_labels(raw):
+    if isinstance(raw, list) and len(raw) == 1:
+        raw = raw[0]  
+
+    if isinstance(raw, str):
+        return [item.strip() for item in raw.split('|') if item.strip()]
+
+    return []
+
 class Qwen2VLModule(VLMBaseModule):
     def __init__(self):
         super().__init__()
@@ -158,18 +181,105 @@ class Qwen2VLModule(VLMBaseModule):
         return rewards
 
     @staticmethod
+    def format_reward(completions, **kwargs):
+        """Check if the Qwen model output matches a specific format."""
+        import re
+        pattern = r"<think>\s*(.*?)\s*</think>\s*<answer>\s*(.*?)\s*</answer>"
+        completion_contents = [completion[0]["content"] for completion in completions]
+        matches = [re.search(pattern, content, re.DOTALL) is not None for content in completion_contents]
+        # logger.info(f"format reward: contents: {completion_contents} \n  matches: {matches}")
+        return [1.0 if match else 0.0 for match in matches]
+    
+    @staticmethod
+    def exact_match_reward(completions, **kwargs):
+        import re
+
+        true_labels_batch = kwargs.get("solution", [])
+        completion_contents = [completion[0]["content"] for completion in completions]
+        
+        rewards = []
+        for content, true_labels in zip(completion_contents, true_labels_batch):
+            # Extract the predicted label string from <answer>...</answer>
+            match = re.search(r"<answer>\s*(.*?)\s*</answer>", content, re.DOTALL)
+            pr = ''
+            pred_labels = []
+            if match:
+                pred_labels = process_predict_label(match.group(1).strip())
+            
+            true_labels = [label.strip().lower() for label in true_labels.split("|")]
+       
+            # Compare the predicted and true label sets
+            is_match = set(pred_labels) == set(true_labels)
+            
+            rwd = 1.0 if is_match else 0.0
+            # logger.info(f"exact_match_reward true_label: {true_labels} \n  pred_labels_batch: {pred_labels} \n reward: {rwd} \n predict_raw:{pr}")
+            # if len(pred_labels) == 0:
+            #     logger.info(f"bad format: {content} \n")
+            rewards.append(rwd)
+
+        return rewards
+
+    @staticmethod
+    def f1_score_reward(completions, **kwargs):
+
+        import re
+        from sklearn.metrics import f1_score
+
+        true_labels_batch = kwargs.get("solution", [])  # Ground truth labels
+        completion_contents = [completion[0]["content"] for completion in completions]
+
+        rewards = []
+        for content, true_labels in zip(completion_contents, true_labels_batch):
+            # Extract predicted labels
+            match = re.search(r"<answer>\s*(.*?)\s*</answer>", content, re.DOTALL)
+
+            pred_labels = []
+            if match:
+                pred_labels = process_predict_label(match.group(1).strip())
+
+            true_labels = [label.strip().lower() for label in true_labels.split("|")]
+            
+
+            # Union label set from both true and predicted labels
+            label_set = sorted(set(true_labels + pred_labels))
+
+            # Binary indicator vectors
+            y_true = [1 if l in true_labels else 0 for l in label_set]
+            y_pred = [1 if l in pred_labels else 0 for l in label_set]
+
+            # F1 calculation
+            rwd = 0
+            if sum(y_true) == 0 and sum(y_pred) == 0:
+                rwd = 1.0
+            else:
+                rwd = f1_score(y_true, y_pred)
+            logger.info(f"f1_match_reward true_label: {true_labels} \n  pred_labels_batch: {pred_labels} \n reward: {rwd}")
+            if len(pred_labels) == 0:
+                logger.info(f"bad format: {content} \n")
+            rewards.append(rwd)
+        return rewards
+    
+    @staticmethod
     def select_reward_func(func: str, task_type: str):
         if func == "accuracy":
             match task_type:
                 case "rec":
                     return Qwen2VLModule.iou_reward
+                case "cvd":
+                    return Qwen2VLModule.exact_match_reward
                 case _:
                     raise ValueError(f"Unsupported reward function: {func}")
         elif func == "format":
             match task_type:
                 case "rec":
                     return Qwen2VLModule.format_reward_rec
+                case "cvd":
+                    return Qwen2VLModule.format_reward
                 case _:
                     raise ValueError(f"Unsupported reward function: {func}")
+        elif func == "f1":
+            match task_type:
+                case "cvd":
+                    return Qwen2VLModule.f1_score_reward    
         else:
             raise ValueError(f"Unsupported reward function: {func}")
